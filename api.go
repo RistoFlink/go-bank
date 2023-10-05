@@ -47,7 +47,7 @@ func (s *APIServer) Run() {
 
 	router.HandleFunc("/account", makeHttpHandleFunc(s.handleAccount))
 
-	router.HandleFunc("/account/{id}", makeHttpHandleFunc(s.handleGetAccount))
+	router.HandleFunc("/account/{id}", makeHttpHandleFunc(s.handleGetAccountById))
 
 	log.Println("JSON API server running on port: ", s.listenAddr)
 
@@ -70,7 +70,17 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 	return fmt.Errorf("method not allowed %s", r.Method)
 }
 
+// get all the accounts -> GET /account
 func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
+	accounts, err := s.store.GetAccounts()
+	if err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, accounts)
+}
+
+func (s *APIServer) handleGetAccountById(w http.ResponseWriter, r *http.Request) error {
 	id := mux.Vars(r)["id"]
 	fmt.Println(id)
 	//db.get(id) later?
