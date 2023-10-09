@@ -8,8 +8,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/golang-jwt/jwt"
-	"github.com/golang-jwt/jwt/v4"
 	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/mux"
 )
@@ -19,16 +17,54 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	w.WriteHeader(status)
 	return json.NewEncoder(w).Encode(v)
 }
-func WithJWTAuth(handlerFunc http.HandlerFunc) http.HandlerFunc {
+
+func permissionDenied(w http.ResponseWriter) {
+	WriteJSON(w, http.StatusForbidden, ApiError{Error: "permission denied"})
+}
+
+func WithJWTAuth(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("calling JWT auth middleware")
 		tokenString := r.Header.Get("x-jwt-token")
 		token, err := validateJWT(tokenString)
 
 		if err != nil {
-			WriteJSON(w, http.StatusForbidden, ApiError{Error: "invalid token"})
+			permissionDenied(w)
 			return
 		}
+
+		//	fmt.Println("first possible breaking point")
+		if !token.Valid {
+			permissionDenied(w)
+			return
+		}
+
+		//	fmt.Println("second possible breaking point")
+		userID, err := getID(r)
+		if err != nil {
+			permissionDenied(w)
+			return
+		}
+		//	fmt.Println("third possible breaking point")
+		account, err := s.GetAccountByID(userID)
+		if err != nil {
+			permissionDenied(w)
+			return
+		}
+
+		//	fmt.Println("fourth  possible breaking point")
+		claims := token.Claims.(jwt.MapClaims)
+		//	panic(reflect.TypeOf(claims["accountNumber"]))
+		if account.Number != int64(claims["accountNumber"].(float64)) {
+			permissionDenied(w)
+			return
+		}
+
+		//	fmt.Println("fifth  possible breaking point")
+		if err != nil {
+			WriteJSON(w, http.StatusForbidden, ApiError{Error: "invalid token"})
+		}
+
 		handlerFunc(w, r)
 	}
 }
@@ -75,7 +111,7 @@ func (s *APIServer) Run() {
 
 	router.HandleFunc("/account", makeHttpHandleFunc(s.handleAccount))
 
-	router.HandleFunc("/account/{id}", WithJWTAuth(makeHttpHandleFunc(s.handleGetAccountById)))
+	router.HandleFunc("/account/{id}", WithJWTAuth(makeHttpHandleFunc(s.handleGetAccountById), s.store))
 
 	router.HandleFunc("/transfer/", makeHttpHandleFunc(s.handleTransfer))
 
@@ -137,6 +173,14 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 	if err := s.store.CreateAccount(account); err != nil {
 		return err
 	}
+
+	tokenString, err := createJWT(account)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("JWT token:", tokenString)
+
 	return WriteJSON(w, http.StatusOK, account)
 }
 
@@ -170,3 +214,17 @@ func getID(r *http.Request) (int, error) {
 
 	return id, nil
 }
+
+func createJWT(account *Account) (string, error) {
+	// Create the Claims
+	claims := &jwt.MapClaims{
+		"ExpiresAt":     15000,
+		"accountNumber": account.Number,
+	}
+	secret := os.Getenv("JWT_SECRET")
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	return token.SignedString([]byte(secret))
+}
+
+// eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFeHBpcmVzQXQiOjE1MTYyMzkwMjIsImFjY291bnROdW1iZXIiOjEyMzEyfQ.lhTI8KJTcYR5G-_OG076K-iwEp-Dcvs7_nvptP8YUok
