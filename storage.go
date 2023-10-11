@@ -47,6 +47,7 @@ func (s *PostgresStore) createAccountTable() error {
 		first_name varchar(50),
 		last_name varchar(50),
 		number serial,
+		encrypted_password varchar(256),
 		balance serial,
 		created_at timestamp
 	)`
@@ -56,12 +57,12 @@ func (s *PostgresStore) createAccountTable() error {
 }
 
 func (s *PostgresStore) CreateAccount(acc *Account) error {
-	query := (`insert into account
-	(first_name, last_name, number, balance, created_at)
+	query := `insert into account
+	(first_name, last_name, number, encrypted_password,  balance, created_at)
 	values
-	($1, $2, $3, $4, $5)`)
+	($1, $2, $3, $4, $5, $6)`
 
-	_, err := s.db.Query(query, acc.FirstName, acc.LastName, acc.Number, acc.Balance, acc.CreatedAt)
+	_, err := s.db.Query(query, acc.FirstName, acc.LastName, acc.Number, acc.EncryptedPassword, acc.Balance, acc.CreatedAt)
 
 	if err != nil {
 		return err
@@ -123,7 +124,7 @@ func (s *PostgresStore) GetAccountByNumber(number int) (*Account, error) {
 func scanIntoAccount(rows *sql.Rows) (*Account, error) {
 
 	account := new(Account)
-	err := rows.Scan(&account.ID, &account.FirstName, &account.LastName, &account.Number, &account.Balance, &account.CreatedAt)
+	err := rows.Scan(&account.ID, &account.FirstName, &account.LastName, &account.Number, &account.EncryptedPassword, &account.Balance, &account.CreatedAt)
 
 	return account, err
 }
